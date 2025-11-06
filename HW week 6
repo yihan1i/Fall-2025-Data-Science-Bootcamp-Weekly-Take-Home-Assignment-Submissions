@@ -1,0 +1,154 @@
+select actor_id, director_id
+from ActorDirector
+group by actor_id, director_id
+having count(*) >= 3
+import pandas as pd
+
+
+def actors_and_directors(actor_director: pd.DataFrame) -> pd.DataFrame:
+   result = actor_director.groupby(['actor_id', 'director_id']).size().reset_index(name='count')
+   result = result[result['count'] >= 3]
+   return result[['actor_id', 'director_id']]
+
+
+##############################################################################
+select user_id,
+concat(upper(substring(name, 1, 1)), lower(substring(name, 2))) as name
+from Users
+order by user_id
+import pandas as pd
+def fix_names(users: pd.DataFrame) -> pd.DataFrame:
+   users['name'] = users['name'].str.capitalize()
+    return users.sort_values('user_id')
+##############################################################################
+
+
+
+
+select i.firstName, i.lastName, s.city, s.state
+from Person as i left join Address as s on i.personId = s.personId
+import pandas as pd
+
+
+def combine_two_tables(person: pd.DataFrame, address: pd.DataFrame) -> pd.DataFrame:
+   result = person.merge(address, on='personId', how='left')
+   return result[['firstName', 'lastName', 'city', 'state']]
+##############################################################################
+select
+(select distinct salary
+   from Employee
+   order by salary desc
+   limit 1 offset 1) as SecondHighestSalary
+import pandas as pd
+
+
+def second_highest_salary(employee: pd.DataFrame) -> pd.DataFrame:
+   unique_salaries = employee['salary'].drop_duplicates().sort_values(ascending=False)
+   if len(unique_salaries) < 2:
+       return pd.DataFrame({'SecondHighestSalary': [None]})
+   second_highest = unique_salaries.iloc[1]
+   return pd.DataFrame({'SecondHighestSalary': [second_highest]})
+##############################################################################
+
+
+select i.product_name, sum(s.unit) as unit
+from Products as i
+join Orders as s on i.product_id = s.product_id
+where s.order_date like '2020-02-%'
+group by i.product_id, i.product_name
+having sum(unit) >= 100
+import pandas as pd
+
+
+import pandas as pd
+
+
+def list_products(products: pd.DataFrame, orders: pd.DataFrame) -> pd.DataFrame:
+   orders['order_date'] = pd.to_datetime(orders['order_date'])
+   result = (
+       orders[
+           (orders['order_date'].dt.month == 2) &
+           (orders['order_date'].dt.year == 2020)
+       ]
+       .groupby('product_id', as_index=False)['unit']
+       .sum()
+   )
+   result = result[result['unit'] >= 100]
+   return result.merge(products[['product_id', 'product_name']], on='product_id')[['product_name', 'unit']]
+
+
+##############################################################################
+select s.unique_id, i.name
+from Employees as i left join EmployeeUNI as s on i.id = s.id
+import pandas as pd
+
+
+def replace_employee_id(employees: pd.DataFrame, employee_uni: pd.DataFrame) -> pd.DataFrame:
+   result = employees.merge(employee_uni, on='id', how='left')
+   return result[['unique_id', 'name']]
+##############################################################################
+
+select round(
+   sum(case when s.event_date = date_add(i.first_login, interval 1 day)
+       then 1 else 0 end) / count(distinct i.player_id),
+   2
+) as fraction
+from (
+   select player_id, min(event_date) as first_login
+   from activity
+   group by player_id
+) i
+left join activity s on i.player_id = s.player_id;
+import pandas as pd
+
+
+def gameplay_analysis(activity: pd.DataFrame) -> pd.DataFrame:
+   first_login = activity.groupby('player_id')['event_date'].min().reset_index()
+   first_login.columns = ['player_id', 'first_login']
+   first_login['next_day'] = first_login['first_login'] + pd.Timedelta(days=1)
+   merged = first_login.merge(
+       activity,
+       left_on=['player_id', 'next_day'],
+       right_on=['player_id', 'event_date'],
+       how='left'
+   )
+   total_players = first_login['player_id'].nunique()
+   logged_in_next_day = merged['event_date'].notna().sum()
+   fraction = round(logged_in_next_day / total_players, 2)
+  
+   return pd.DataFrame({'fraction': [fraction]})
+##############################################################################
+
+select i.project_id, round(avg(s.experience_years),2) as average_years
+from Project as i join Employee as s on i.employee_id = s.employee_id
+group by project_id
+import pandas as pd
+
+
+def project_employees_i(project: pd.DataFrame, employee: pd.DataFrame) -> pd.DataFrame:
+   result = project.merge(employee, on='employee_id', how='left')
+   avg_experience = result.groupby('project_id')['experience_years'].mean().round(2).reset_index()
+   avg_experience.columns = ['project_id', 'average_years']
+   return avg_experience
+##############################################################################
+
+select i.name as department, s.name as employee, s.salary
+from employee s
+join department i on s.departmentId = i.id
+where (
+   select count(distinct s2.salary)
+   from employee s2
+   where s2.departmentId = s.departmentId
+   and s2.salary > s.salary
+) < 3
+order by i.name, s.salary desc;
+import pandas as pd
+
+
+def top_three_salaries(employee: pd.DataFrame, department: pd.DataFrame) -> pd.DataFrame:
+   result = employee.merge(department, left_on='departmentId', right_on='id', how='inner')
+   result['rank'] = result.groupby('departmentId')['salary'].rank(method='dense', ascending=False)
+   high_earners = result[result['rank'] <= 3]
+   high_earners = high_earners[['name_x', 'name_y', 'salary']]
+   high_earners.columns = ['Department', 'Employee', 'Salary']
+   return high_earners
